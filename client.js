@@ -1,5 +1,5 @@
 var config = require('./config');
-var imap = require('./imap');
+var imap = require('./imap_connection');
 
 var c = imap.connect({
   host: config.host,
@@ -8,8 +8,8 @@ var c = imap.connect({
 });
 
 c.addListener('authenticate', function() {
-  this.enqueue('LIST "" ""');
-  this.enqueue('LIST "/" "*"');
-  this.enqueue('EXAMINE INBOX');
-  this.enqueue('LOGOUT');
+  this.message('LIST "" ""');
+  this.message('LIST "/" "*"');
+  this.message('EXAMINE INBOX');
+  this.end();
 });
