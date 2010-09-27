@@ -2,6 +2,10 @@ var sys = require('sys');
 var net = require('net');
 var crypto = require('crypto');
 
+var util = require('./util');
+var imap_response = require('./imap_response');
+
+
 var CRLF = "\r\n";
 
 var debugLevel = 0;
@@ -17,68 +21,75 @@ function debug (x) {
 
 
 
+
+
 function IMAPConnection () {
   this._callbacks = {};
   this._queue = [];
-  
-  this.setEncoding('ascii');
+
   this.addListener('data', this.response);
   this.addListener('connect', this.makeSecure);
   this.addListener('secure', this.authenticate);
   this.addListener('authenticate', this.authenticated);
 };
-sys.inherits(IMAPConnection, net.Stream);
+util.inherits(IMAPConnection, net.Stream);
 
 IMAPConnection.prototype.tag = 1;
 IMAPConnection.prototype.port = 993;
 IMAPConnection.prototype.username = 'anonymous';
 IMAPConnection.prototype.password = 'anonymous';
-IMAPConnection.prototype.processingQueue = false;
+IMAPConnection.prototype.paused = false;
 
 IMAPConnection.prototype.nextTag = function() {
   return 'N' + (this.tag++);
 };
 
+IMAPConnection.prototype.pause = function() {
+  this.paused = true;
+};
+
+IMAPConnection.prototype.unpause = function() {
+  this.paused = false;
+
+  // Send out all queued messages in the order they came in.
+  var args;
+  while (args = this._queue.shift()) {
+    this.message.apply(this, args);
+  }
+};
+
 IMAPConnection.prototype.write = function(chunk) {
+  // Write debug messages when the chunk is a string.
   if (chunk.replace) {
     var data = chunk.split(CRLF);
     data.pop();
     debug('-> ' + data.join(CRLF + '-> '));
   }
-  return net.Stream.prototype.write.apply(this, arguments);
+
+  return this.parent.write.apply(this, arguments);
 };
 
 IMAPConnection.prototype.message = function(data, callback) {
-  var tag = this.nextTag();
-  if (callback) {
-    this._callbacks[tag] = callback;
+  if (this.paused) {
+    this._queue.push(arguments);
   }
-  return this.write(tag + ' ' + data + CRLF);
-};
-
-IMAPConnection.prototype.processQueue = function() {
-  if (!this.processingQueue && this._queue.length) {
-    var message = this._queue.shift();
-    var data = message[0], callback = message[1];
-    this.processingQueue = true;
-    
-    this.message(data, function() {
-      this.processingQueue = false;
-      this.processQueue();
-      if (callback) {
-        callback.apply(this, arguments);
-      }
-    });
+  else {
+    var tag = this.nextTag();
+    if (callback) {
+      this._callbacks[tag] = callback;
+    }
+    return this.write([ tag, ' ', data, '\r\n' ].join(''));
   }
-};
-
-IMAPConnection.prototype.enqueue = function(data, callback) {
-  this._queue.push([data, callback]);
-  this.processQueue();
 };
 
 IMAPConnection.prototype.response = function(chunk) {
-  var data = chunk.split(CRLF);
+  // chunk is a Buffer
+  
+  
+  
+  
+  // Debug output
+  var data = chunk.toString('ascii').split(CRLF);
   data.pop(); // remove the trailing crlf
   debug('<- ' + data.join(CRLF + '<- '));
 
@@ -93,7 +104,7 @@ IMAPConnection.prototype.response = function(chunk) {
 
 IMAPConnection.prototype.connect = function() {
   debug('Trying to connect... ('+this.host+', '+this.port+')');
-  return net.Stream.prototype.connect.call(this, this.port, this.host);
+  return this.parent.connect.call(this, this.port, this.host);
 };
 
 IMAPConnection.prototype.makeSecure = function() {
@@ -111,15 +122,15 @@ IMAPConnection.prototype.authenticate = function() {
 
 IMAPConnection.prototype.end = function() {
   var args = arguments;
-  debug('Logging out now.');
   this.message('LOGOUT', function() {
-    net.Stream.prototype.end.apply(this, args);
+    debug('Logged out.');
+    this.parent.end.apply(this, args);
   });
 };
 
 IMAPConnection.prototype.authenticated = function() {
   debug('Connection authenticated.');
-  this.processQueue();
+  this.unpause();
 };
 
 exports.IMAPConnection = IMAPConnection;
