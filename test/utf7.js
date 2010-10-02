@@ -13,6 +13,9 @@ exports['test conversion from utf8 to utf7'] = function(assert) {
 
   // The ampersand sign is represented by &-.
   assert.equal('Hot &- Spicy', utf7.utf8to7('Hot & Spicy'));
+  
+  // Slashes are converted to commas.
+  assert.equal('&,,,typh2VDIf7Q-', utf7.utf8to7('\uffff\uedca\u9876\u5432\u1fed'));
 };
 
 exports['test conversion from utf7 to utf8'] = function(assert) {
@@ -28,6 +31,9 @@ exports['test conversion from utf7 to utf8'] = function(assert) {
 
   // The ampersand sign is represented by &-.
   assert.equal('Hot & Spicy', utf7.utf7to8('Hot &- Spicy'));
+  
+  // Slashes are converted to commas.
+  assert.equal('\uffff\uedca\u9876\u5432\u1fed', utf7.utf7to8('&,,,typh2VDIf7Q-'));
 };
 
 
