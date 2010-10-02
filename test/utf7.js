@@ -12,10 +12,13 @@ exports['test conversion from utf8 to utf7'] = function(assert) {
   assert.equal('\'&T2BZfQ-\' hei&AN8-t "Hallo"', utf7.utf8to7('\'\u4F60\u597D\' heißt "Hallo"'));
 
   // The ampersand sign is represented by &-.
-  assert.equal('Hot &- Spicy', utf7.utf8to7('Hot & Spicy'));
-  
+  assert.equal('Hot &- Spicy &- Fruity', utf7.utf8to7('Hot & Spicy & Fruity'));
+
   // Slashes are converted to commas.
   assert.equal('&,,,typh2VDIf7Q-', utf7.utf8to7('\uffff\uedca\u9876\u5432\u1fed'));
+
+  // & sign around non-ASCII chars
+  assert.equal('&AOQ-&-&AOQ-&-&AOQ-', utf7.utf8to7('\u00E4&\u00E4&\u00E4'));
 };
 
 exports['test conversion from utf7 to utf8'] = function(assert) {
@@ -30,10 +33,13 @@ exports['test conversion from utf7 to utf8'] = function(assert) {
   assert.equal('\'\u4F60\u597D\' heißt "Hallo"', utf7.utf7to8('\'&T2BZfQ-\' hei&AN8-t "Hallo"'));
 
   // The ampersand sign is represented by &-.
-  assert.equal('Hot & Spicy', utf7.utf7to8('Hot &- Spicy'));
-  
+  assert.equal('Hot & Spicy & Fruity', utf7.utf7to8('Hot &- Spicy &- Fruity'));
+
   // Slashes are converted to commas.
   assert.equal('\uffff\uedca\u9876\u5432\u1fed', utf7.utf7to8('&,,,typh2VDIf7Q-'));
+
+  // & sign around non-ASCII chars
+  assert.equal('\u00E4&\u00E4&\u00E4', utf7.utf7to8('&AOQ-&-&AOQ-&-&AOQ-'));
 };
 
 
