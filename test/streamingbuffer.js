@@ -133,3 +133,45 @@ exports['test StreamingBuffer fixed byte length that can be satisfied from initi
   assert.equal('this text is already in the buffer', dataReceived);
 };
 
+exports['test StreamingBuffer requestNextLine'] = function(assert, beforeExit) {
+  var sb = new StreamingBuffer();
+  var data = [];
+
+  setTimeout(function() { sb.push(new Buffer('this text is spread ')); }, 100);
+  setTimeout(function() { sb.push(new Buffer('over multiple buffers.\r\nit contains testing info\r\n')); }, 150);
+  setTimeout(function() { sb.push(new Buffer('and also some information that is ')); }, 200);
+  setTimeout(function() { sb.push(new Buffer('not terminated\r\nlike this, for example')); }, 250);
+
+  sb.requestNextLine(function(line) { data.push(line); });
+  sb.requestNextLine(function(line) { data.push(line); });
+  sb.requestNextLine(function(line) { data.push(line); });
+
+  beforeExit(function() {
+    assert.length(data, 3);
+    assert.equal('this text is spread over multiple buffers.\r\n', data[0]);
+    assert.equal('it contains testing info\r\n', data[1]);
+    assert.equal('and also some information that is not terminated\r\n', data[2]);
+  });
+};
+
+exports['test StreamingBuffer requestNextLine satisfied from initial buffers'] = function(assert, beforeExit) {
+  var sb = new StreamingBuffer();
+  var data = [];
+
+  sb.push(new Buffer('this text is spread '));
+  sb.push(new Buffer('over multiple buffers.\r\nit contains testing info\r\n'));
+  sb.push(new Buffer('and also some information that is '));
+  sb.push(new Buffer('not terminated\r\nlike this, for example'));
+
+  sb.requestNextLine(function(line) { data.push(line); });
+  sb.requestNextLine(function(line) { data.push(line); });
+  sb.requestNextLine(function(line) { data.push(line); });
+
+  beforeExit(function() {
+    assert.length(data, 3);
+    assert.equal('this text is spread over multiple buffers.\r\n', data[0]);
+    assert.equal('it contains testing info\r\n', data[1]);
+    assert.equal('and also some information that is not terminated\r\n', data[2]);
+  });
+};
+
