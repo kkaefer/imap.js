@@ -1,4 +1,4 @@
-var utf7 = require('../lib/utf7');
+var utf7 = require('utf7');
 
 exports['test conversion from utf8 to utf7'] = function(assert) {
   // Examples from RFC 2152.

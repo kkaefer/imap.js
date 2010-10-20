@@ -1,4 +1,4 @@
-var StreamingBuffer = require('../lib/streamingbuffer').StreamingBuffer;
+var StreamingBuffer = require('streamingbuffer').StreamingBuffer;
 var Buffer = require('buffer').Buffer;
 
 
