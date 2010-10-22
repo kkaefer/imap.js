@@ -3,8 +3,10 @@ var net = require('net');
 var crypto = require('crypto');
 
 var util = require('./util');
-var imap_response = require('./imap_response');
+var StreamingBuffer = require('./lib/streamingbuffer').StreamingBuffer;
 
+//var imap_response = require('./imap_response');
+var IMAPResponse = require('./imap_response').IMAPResponse;
 
 var CRLF = "\r\n";
 
@@ -26,13 +28,17 @@ function debug (x) {
 function IMAPConnection () {
   this._callbacks = {};
   this._queue = [];
+  this._stream = new StreamingBuffer();
 
   this.addListener('data', this.response);
   this.addListener('connect', this.makeSecure);
   this.addListener('secure', this.authenticate);
   this.addListener('authenticate', this.authenticated);
+
+  new IMAPResponse(this);
 };
-util.inherits(IMAPConnection, net.Stream);
+IMAPConnection.prototype.__proto__ = net.Stream.prototype;
+IMAPConnection.prototype.parent = net.Stream.prototype;
 
 IMAPConnection.prototype.tag = 1;
 IMAPConnection.prototype.port = 993;
@@ -58,48 +64,38 @@ IMAPConnection.prototype.unpause = function() {
   }
 };
 
-IMAPConnection.prototype.write = function(chunk) {
-  // Write debug messages when the chunk is a string.
-  if (chunk.replace) {
-    var data = chunk.split(CRLF);
-    data.pop();
-    debug('-> ' + data.join(CRLF + '-> '));
-  }
-
-  return this.parent.write.apply(this, arguments);
-};
-
 IMAPConnection.prototype.message = function(data, callback) {
   if (this.paused) {
     this._queue.push(arguments);
   }
   else {
     var tag = this.nextTag();
+    var output = tag + ' ' + data + '\r\n';
     if (callback) {
-      this._callbacks[tag] = callback;
+      this._callbacks[tag] = { command: output, callback: callback };
     }
-    return this.write([ tag, ' ', data, '\r\n' ].join(''));
+    return this.write(output);
   }
 };
 
 IMAPConnection.prototype.response = function(chunk) {
   // chunk is a Buffer
-  
-  
-  
-  
-  // Debug output
-  var data = chunk.toString('ascii').split(CRLF);
-  data.pop(); // remove the trailing crlf
-  debug('<- ' + data.join(CRLF + '<- '));
-
-  // This is horrible processing. We need a proper parser instead.
-  var last = data[data.length - 1];
-  var parts = last.split(' ', 2);
-  var tag = parts[0];
-  if (tag in this._callbacks) {
-    this._callbacks[tag].call(this, data);
-  }
+  this._stream.push(chunk);
+  // 
+  // 
+  // 
+  // // Debug output
+  // var data = chunk.toString('ascii').split(CRLF);
+  // data.pop(); // remove the trailing crlf
+  // debug('<- ' + data.join(CRLF + '<- '));
+  // 
+  // // This is horrible processing. We need a proper parser instead.
+  // var last = data[data.length - 1];
+  // var parts = last.split(' ', 2);
+  // var tag = parts[0];
+  // if (tag in this._callbacks) {
+  //   this._callbacks[tag].call(this, data);
+  // }
 };
 
 IMAPConnection.prototype.connect = function() {
@@ -132,6 +128,7 @@ IMAPConnection.prototype.authenticated = function() {
   debug('Connection authenticated.');
   this.unpause();
 };
+
 
 exports.IMAPConnection = IMAPConnection;
 exports.connect = function(options) {
