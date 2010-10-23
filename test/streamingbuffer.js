@@ -133,6 +133,24 @@ exports['test StreamingBuffer fixed byte length that can be satisfied from initi
   assert.equal('this text is already in the buffer', dataReceived);
 };
 
+
+exports['test StreamingBuffer fixed byte length request with 0 bytes'] = function(assert, beforeExit) {
+  var sb = new StreamingBuffer();
+  sb.push(new Buffer('this string is never requested\r\n'));
+  var completeCallback = false;
+  
+  var immediate = sb.request(0, function(buffer) {
+    assert.isUndefined('this function should never be called');
+  }, function(data) {
+    completeCallback = true;
+  });
+  
+  beforeExit(function() {
+    assert.ok(completeCallback, 'complete callback was never called');
+    assert.equal('this string is never requested\r\n', sb.nextLine());
+  });
+};
+
 exports['test StreamingBuffer requestNextLine'] = function(assert, beforeExit) {
   var sb = new StreamingBuffer();
   var data = [];
@@ -174,4 +192,5 @@ exports['test StreamingBuffer requestNextLine satisfied from initial buffers'] =
     assert.equal('and also some information that is not terminated\r\n', data[2]);
   });
 };
+
 
