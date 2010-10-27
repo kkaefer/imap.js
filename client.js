@@ -5,6 +5,8 @@ var IMAPConnection = require('./imap_connection').IMAPConnection;
 var c = new IMAPConnection(config);
 
 c.on('authenticated', function(response) {
+  this.select('INBOX');
+  
 //   this.parse(response);
 //   
 //   console.dir(response);

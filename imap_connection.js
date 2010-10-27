@@ -3,8 +3,10 @@ var util = require('util');
 var crypto = require('crypto');
 var Buffer = require('buffer').Buffer;
 
+var utf7 = require('./lib/utf7');
 var StreamingBuffer = require('./lib/streamingbuffer').StreamingBuffer;
 var IMAPResponse = require('./imap_response');
+
 
 
 
@@ -257,6 +259,13 @@ IMAPConnection.prototype.hasCapability = function(capability, success, failure) 
     if (failure) {
       failure.call(this, response);
     }
+  });
+};
+
+IMAPConnection.prototype.select = function(mailbox, callback) {
+  this.message('SELECT "' + utf7.utf8to7(mailbox) + '"', function() {
+    this.mailbox = mailbox;
+    callback.call(this);
   });
 };
 
