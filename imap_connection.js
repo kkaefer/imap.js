@@ -61,17 +61,19 @@ IMAPConnection.prototype.message = function(command, complete, cont) {
 };
 
 IMAPConnection.prototype.write = function(data) {
-  if (data instanceof Buffer) {
-    console.log('$->', data);
-  }
-  else {
-    console.log('$->', util.inspect(data));
-  }
+  if (typeof data === 'string')
+    console.log('$-> ' + util.inspect(data));
+
   net.Stream.prototype.write.call(this, data);
 };
 
 IMAPConnection.prototype.receivedData = function(chunk) {
-  console.log('$<-', util.inspect(chunk.toString()));
+  var lines = chunk.toString().split('\r\n');
+  if (lines[lines.length - 1] === '') lines.pop();
+  console.log(lines.map(function(line, j) {
+    return '$<- ' + util.inspect(line + '\r\n');
+  }).join('\n'));
+  
   this.stream.push(chunk);
 };
 
@@ -85,7 +87,6 @@ IMAPConnection.prototype.end = function() {
   var args = arguments;
   this.message('LOGOUT', function() {
     console.warn('Logged out.');
-    // net.Stream.prototype.end.apply(this, args);
   });
 };
 
