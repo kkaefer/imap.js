@@ -38,7 +38,7 @@ function IMAPConnection(config) {
     this[key] = config[key];
   }
 
-  this.commands = {};
+  this.commands = [];
   this.commandQueue = [];
   this.stream = new StreamingBuffer();
 
@@ -63,39 +63,19 @@ IMAPConnection.prototype.host = 'localhost';
 IMAPConnection.prototype.port = 993;
 IMAPConnection.prototype.username = 'anonymous';
 IMAPConnection.prototype.password = 'anonymous';
-IMAPConnection.prototype.paused = false;
 
 IMAPConnection.prototype.nextTag = function() {
   return 'N' + (this.tag++);
 };
 
-IMAPConnection.prototype.pause = function() {
-  this.paused = true;
-};
-
-IMAPConnection.prototype.unpause = function() {
-  this.paused = false;
-
-  // Send out all queued messages in the order they came in.
-  var args;
-  while (args = this.commandQueue.shift()) {
-    this.message.apply(this, args);
-  }
-};
-
 IMAPConnection.prototype.message = function(data, callback) {
-  if (this.paused) {
-    this.commandQueue.push(arguments);
+  var tag = this.nextTag();
+  var output = tag + ' ' + data + '\r\n';
+  if (callback) {
+    this.commands[tag] = { command: output, callback: callback };
   }
-  else {
-    var tag = this.nextTag();
-    var output = tag + ' ' + data + '\r\n';
-    if (callback) {
-      this.commands[tag] = { command: output, callback: callback };
-    }
-    console.log('$->', util.inspect(output));
-    return this.write(output);
-  }
+  console.log('$->', util.inspect(output));
+  return this.write(output);
 };
 
 IMAPConnection.prototype.receivedData = function(chunk) {
