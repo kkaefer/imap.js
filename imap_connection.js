@@ -7,30 +7,6 @@ var StreamingBuffer = require('./lib/streamingbuffer').StreamingBuffer;
 var IMAPResponse = require('./imap_response');
 
 
-function printResponse(response) {
-  console.warn('## -> ' + util.inspect(response.command));
-
-  response.forEach(function(l) {
-    console.warn('## <- ' + util.inspect(l.text));
-
-    if (l.length) {
-      console.warn('##   and ' + l.map(function(b) {
-        return 'Buffer(' + b.reduce(function(prev, cur){
-          return prev + cur.length;
-        }, 0) + ')';
-      }).join(', '));
-
-      console.warn(l.map(function(b, i) {
-        var prompt = '##   ' + i + ': ';
-        var str = b.reduce(function(prev, cur) { return prev + cur.toString('ascii'); }, '').split('\r\n');
-        return str.map(function(s, j) {
-          return prompt + util.inspect(s + (j < str.length - 1 ? '\r\n' : ''));
-        }).join('\n');
-      }).join('\r\n   '));
-    }
-  });
-  console.warn('## <- ' + util.inspect(response.done.text) + '\n');
-}
 
 function IMAPConnection(config) {
   net.Stream.call(this);
@@ -81,8 +57,17 @@ IMAPConnection.prototype.message = function(command, complete, cont) {
   this.commands.push(command);
 
   var output = command.tag + ' ' + command.command + '\r\n';
-  console.log('$->', util.inspect(output));
   return this.write(output);
+};
+
+IMAPConnection.prototype.write = function(data) {
+  if (data instanceof Buffer) {
+    console.log('$->', data);
+  }
+  else {
+    console.log('$->', util.inspect(data));
+  }
+  net.Stream.prototype.write.call(this, data);
 };
 
 IMAPConnection.prototype.receivedData = function(chunk) {
@@ -248,7 +233,6 @@ IMAPConnection.prototype.authenticate = function() {
     'complete': this.finishAuthentication,
     'continue': function(response, line) {
       var output = new Buffer('\u0000' + this.username + '\u0000' + this.password).toString('base64') + '\r\n';
-      console.log('$->', util.inspect(output));
       this.write(output);
     }
   });
