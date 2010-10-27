@@ -18,5 +18,5 @@ c.on('authenticated', function(response) {
 //   // this.message('SELECT INBOX');
 //   // this.message('FETCH  (BODY[HEADER])');
 //   
-  // this.end();
+  this.end();
 });

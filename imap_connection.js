@@ -9,7 +9,7 @@ var IMAPResponse = require('./imap_response');
 
 
 function IMAPConnection(config) {
-  net.Stream.call(this);
+  net.Stream.call(this, { allowHalfOpen: true });
 
   for (var key in config) {
     this[key] = config[key];
@@ -45,18 +45,20 @@ IMAPConnection.prototype.nextTag = function() {
 };
 
 IMAPConnection.prototype.message = function(command, complete, cont) {
-  if (typeof command === 'string') {
-    command = {
-      'command': command,
-      'complete': complete,
-      'continue': cont
-    };
-  }
-  
-  command.tag = this.nextTag();
-  this.commands.push(command);
+  var tag = this.nextTag();
 
-  var output = command.tag + ' ' + command.command + '\r\n';
+  if (typeof complete !== 'function') {
+    cont = complete['continue'];
+    complete = complete['complete'];
+  }
+
+  this.commands.push({
+    'command': command,
+    'complete': complete,
+    'continue': cont
+  });
+
+  var output = tag + ' ' + command + '\r\n';
   return this.write(output);
 };
 
@@ -73,7 +75,7 @@ IMAPConnection.prototype.receivedData = function(chunk) {
   console.log(lines.map(function(line, j) {
     return '$<- ' + util.inspect(line + '\r\n');
   }).join('\n'));
-  
+
   this.stream.push(chunk);
 };
 
@@ -84,9 +86,9 @@ IMAPConnection.prototype.makeSecure = function() {
 };
 
 IMAPConnection.prototype.end = function() {
-  var args = arguments;
   this.message('LOGOUT', function() {
     console.warn('Logged out.');
+    net.Stream.prototype.end.call(this);
   });
 };
 
@@ -210,9 +212,17 @@ IMAPConnection.prototype.startTLS = function() {
 };
 
 IMAPConnection.prototype.login = function() {
-  this.message({
-    'command': 'LOGIN ' + this.username + ' ' + this.password,
-    'complete': this.finishAuthentication
+  this.message('LOGIN ' + this.username + ' ' + this.password, this.finishAuthentication);
+};
+
+IMAPConnection.prototype.authenticate = function() {
+  // Send authentication request.
+  this.message('AUTHENTICATE PLAIN', {
+    'complete': this.finishAuthentication,
+    'continue': function(response, line) {
+      var output = new Buffer('\u0000' + this.username + '\u0000' + this.password).toString('base64') + '\r\n';
+      this.write(output);
+    }
   });
 };
 
@@ -225,18 +235,6 @@ IMAPConnection.prototype.finishAuthentication = function(response) {
     console.warn('Authentication failed.');
     this.emit('authenticationError', response);
   }
-};
-
-IMAPConnection.prototype.authenticate = function() {
-  // Send authentication request.
-  this.message({
-    'command': 'AUTHENTICATE PLAIN',
-    'complete': this.finishAuthentication,
-    'continue': function(response, line) {
-      var output = new Buffer('\u0000' + this.username + '\u0000' + this.password).toString('base64') + '\r\n';
-      this.write(output);
-    }
-  });
 };
 
 IMAPConnection.prototype.hasCapability = function(capability, success, failure) {
