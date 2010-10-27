@@ -1,6 +1,7 @@
 var net = require('net');
 var util = require('util');
 var crypto = require('crypto');
+var Buffer = require('buffer').Buffer;
 
 var StreamingBuffer = require('./lib/streamingbuffer').StreamingBuffer;
 var IMAPResponse = require('./imap_response');
@@ -8,7 +9,7 @@ var IMAPResponse = require('./imap_response');
 
 function printResponse(response) {
   console.warn('## -> ' + util.inspect(response.command));
-  
+
   response.forEach(function(l) {
     console.warn('## <- ' + util.inspect(l.text));
 
@@ -32,8 +33,8 @@ function printResponse(response) {
 }
 
 function IMAPConnection(config) {
-  this.parent.call(this);
-  
+  net.Stream.call(this);
+
   for (var key in config) {
     this[key] = config[key];
   }
@@ -45,7 +46,7 @@ function IMAPConnection(config) {
   this.response = [];
   this.line = [];
   this.line.text = '';
-  
+
   this.on('data', this.receivedData);
   this.setSecurityHandlers();
 
@@ -55,8 +56,7 @@ function IMAPConnection(config) {
   // Start reading lines from the stream "loop".
   this.stream.requestNextLine(this.retrieveLine, this);
 };
-IMAPConnection.prototype.__proto__ = net.Stream.prototype;
-IMAPConnection.prototype.parent = net.Stream;
+util.inherits(IMAPConnection, net.Stream);
 
 IMAPConnection.prototype.tag = 1;
 IMAPConnection.prototype.host = 'localhost';
@@ -68,12 +68,19 @@ IMAPConnection.prototype.nextTag = function() {
   return 'N' + (this.tag++);
 };
 
-IMAPConnection.prototype.message = function(data, callback) {
-  var tag = this.nextTag();
-  var output = tag + ' ' + data + '\r\n';
-  if (callback) {
-    this.commands[tag] = { command: output, callback: callback };
+IMAPConnection.prototype.message = function(command, complete, cont) {
+  if (typeof command === 'string') {
+    command = {
+      'command': command,
+      'complete': complete,
+      'continue': cont
+    };
   }
+  
+  command.tag = this.nextTag();
+  this.commands.push(command);
+
+  var output = command.tag + ' ' + command.command + '\r\n';
   console.log('$->', util.inspect(output));
   return this.write(output);
 };
@@ -93,7 +100,7 @@ IMAPConnection.prototype.end = function() {
   var args = arguments;
   this.message('LOGOUT', function() {
     console.warn('Logged out.');
-    this.parent.prototype.end.apply(this, args);
+    // net.Stream.prototype.end.apply(this, args);
   });
 };
 
@@ -120,8 +127,8 @@ IMAPConnection.prototype.retrieveLine = function(line) {
   else {
     // This line is finished.
     this.line.text += line;
-    
-    if (Object.keys(this.commands).length) {
+
+    if (this.commands.length) {
       // A command is currently in progress, so this belongs to the response.
       this.addLineToTaggedResponse(this.line);
     }
@@ -130,7 +137,7 @@ IMAPConnection.prototype.retrieveLine = function(line) {
       IMAPResponse.parseLine(this.line);
       this.emit('untagged', this.line);
     }
-    
+
     this.line = [];
     this.line.text = '';
     this.stream.requestNextLine(this.retrieveLine, this);
@@ -138,30 +145,43 @@ IMAPConnection.prototype.retrieveLine = function(line) {
 };
 
 IMAPConnection.prototype.addLineToTaggedResponse = function(line) {
-  if (line.text[0] !== '*' && line.text[0] !== '+') {
-    // This response is finished.
-    var parts = line.text.split(' ', 2);
-    this.response.tag = parts[0];
-    this.response.status = parts[1];
-    this.response.done = line;
+  switch (line.text[0]) {
+    case '*':
+      // Data line. There are more lines to be expected in this response.
+      this.response.push(line);
+      break;
 
-    if (this.response.tag in this.commands) {
-      this.response.command = this.commands[this.response.tag].command;
-      var callback = this.commands[this.response.tag].callback;
-      var self = this;
+    case '+':
+      // Continue request.
       var response = this.response;
-      delete this.commands[this.response.tag];
-      process.nextTick(function() { callback.call(self, response); });
-    }
+      var command = this.commands[0];
+      if (command['continue']) {
+        var self = this;
+        process.nextTick(function() { command['continue'].call(self, response, line); });
+      }
+      break;
 
-    // DEBUG
-    // printResponse.call(this, this.response);
+    default:
+      // This tagged response is finished.
+      var parts = line.text.split(' ', 2);
+      var response = this.response;
+      var command = this.commands.shift();
 
-    this.response = [];
-  }
-  else {
-    // There are more lines to be expected in this response.
-    this.response.push(line);
+      response.tag = parts[0];
+      response.status = parts[1];
+      response.done = line;
+      response.command = command.command;
+
+      if (command['complete']) {
+        var self = this;
+        process.nextTick(function() { command['complete'].call(self, response); });
+      }
+
+      // DEBUG
+      // printResponse.call(this, this.response);
+
+      this.response = [];
+      break;
   }
 
   // Make the connection get the next response.
@@ -204,24 +224,34 @@ IMAPConnection.prototype.startTLS = function() {
 };
 
 IMAPConnection.prototype.login = function() {
-  this.message('LOGIN ' + this.username + ' ' + this.password, function(response) {
-    this.parse(response);
-
-    if (response.status === 'OK') {
-      console.warn('Connection authenticated.');
-      this.unpause();
-      this.emit('authenticated', response);
-    }
-    else {
-      console.warn('Authentication failed.');
-      this.emit('authenticationError', response);
-    }
+  this.message({
+    'command': 'LOGIN ' + this.username + ' ' + this.password,
+    'complete': this.finishAuthentication
   });
 };
 
+IMAPConnection.prototype.finishAuthentication = function(response) {
+  if (response.status === 'OK') {
+    console.warn('Connection authenticated.');
+    this.emit('authenticated', response);
+  }
+  else {
+    console.warn('Authentication failed.');
+    this.emit('authenticationError', response);
+  }
+};
+
 IMAPConnection.prototype.authenticate = function() {
-  // send authentication request.
-  console.log('authenticate');
+  // Send authentication request.
+  this.message({
+    'command': 'AUTHENTICATE PLAIN',
+    'complete': this.finishAuthentication,
+    'continue': function(response, line) {
+      var output = new Buffer('\u0000' + this.username + '\u0000' + this.password).toString('base64') + '\r\n';
+      console.log('$->', util.inspect(output));
+      this.write(output);
+    }
+  });
 };
 
 IMAPConnection.prototype.hasCapability = function(capability, success, failure) {
