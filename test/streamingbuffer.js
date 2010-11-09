@@ -121,10 +121,11 @@ exports['test StreamingBuffer fixed byte length that can be satisfied from initi
     completeCallback = true;
   });
 
-  // No async required here.
-  assert.ok(completeCallback);
-  assert.equal('and this one is a regular line\r\n', sb._nextLine());
-  assert.equal('this text is already in the buffer', dataReceived);
+  beforeExit(function() {
+    assert.ok(completeCallback);
+    assert.equal('and this one is a regular line\r\n', sb._nextLine());
+    assert.equal('this text is already in the buffer', dataReceived);
+  });
 };
 
 
