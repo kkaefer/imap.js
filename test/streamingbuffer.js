@@ -91,7 +91,7 @@ exports['test StreamingBuffer fixed byte length callback'] = function(assert, be
   setTimeout(function() { sb.push(new Buffer('of 83 bytes and ignores CRLF')); }, 200);
   setTimeout(function() { sb.push(new Buffer('the text that appears here doesn\'t count\r\n')); }, 250);
 
-  var immediate = sb.request(83, function(buffer) {
+  var immediate = sb.getBytes(83, function(buffer) {
     dataReceived.push(buffer.toString('ascii'));
   }, function(data) {
     completeCallback = true;
@@ -117,7 +117,7 @@ exports['test StreamingBuffer fixed byte length that can be satisfied from initi
 
   sb.push(new Buffer('this text is already in the bufferand this one is a regular line\r\n'));
 
-  var immediate = sb.request(34, function(buffer) {
+  var immediate = sb.getBytes(34, function(buffer) {
     dataReceived = buffer.toString('ascii');
   }, function(data) {
     completeCallback = true;
@@ -139,7 +139,7 @@ exports['test StreamingBuffer fixed byte length request with 0 bytes'] = functio
   sb.push(new Buffer('this string is never requested\r\n'));
   var completeCallback = false;
 
-  var immediate = sb.request(0, function(buffer) {
+  var immediate = sb.getBytes(0, function(buffer) {
     assert.isUndefined('this function should never be called');
   }, function(data) {
     completeCallback = true;
@@ -151,7 +151,7 @@ exports['test StreamingBuffer fixed byte length request with 0 bytes'] = functio
   });
 };
 
-exports['test StreamingBuffer requestNextLine'] = function(assert, beforeExit) {
+exports['test StreamingBuffer getLine'] = function(assert, beforeExit) {
   var sb = new StreamingBuffer();
   var data = [];
 
@@ -160,9 +160,9 @@ exports['test StreamingBuffer requestNextLine'] = function(assert, beforeExit) {
   setTimeout(function() { sb.push(new Buffer('and also some information that is ')); }, 200);
   setTimeout(function() { sb.push(new Buffer('not terminated\r\nlike this, for example')); }, 250);
 
-  sb.requestNextLine(function(line) { data.push(line); });
-  sb.requestNextLine(function(line) { data.push(line); });
-  sb.requestNextLine(function(line) { data.push(line); });
+  sb.getLine(function(line) { data.push(line); });
+  sb.getLine(function(line) { data.push(line); });
+  sb.getLine(function(line) { data.push(line); });
 
   beforeExit(function() {
     assert.length(data, 3);
@@ -172,7 +172,7 @@ exports['test StreamingBuffer requestNextLine'] = function(assert, beforeExit) {
   });
 };
 
-exports['test StreamingBuffer requestNextLine satisfied from initial buffers'] = function(assert, beforeExit) {
+exports['test StreamingBuffer getLine satisfied from initial buffers'] = function(assert, beforeExit) {
   var sb = new StreamingBuffer();
   var data = [];
 
@@ -181,9 +181,9 @@ exports['test StreamingBuffer requestNextLine satisfied from initial buffers'] =
   sb.push(new Buffer('and also some information that is '));
   sb.push(new Buffer('not terminated\r\nlike this, for example'));
 
-  sb.requestNextLine(function(line) { data.push(line); });
-  sb.requestNextLine(function(line) { data.push(line); });
-  sb.requestNextLine(function(line) { data.push(line); });
+  sb.getLine(function(line) { data.push(line); });
+  sb.getLine(function(line) { data.push(line); });
+  sb.getLine(function(line) { data.push(line); });
 
   beforeExit(function() {
     assert.length(data, 3);
@@ -203,11 +203,11 @@ exports['test StreamingBuffer fixed length and line concurrently'] = function(as
   setTimeout(function() { sb.push(new Buffer('and also some information that is ')); }, 200);
   setTimeout(function() { sb.push(new Buffer('not terminated\r\nlike this, for example')); }, 250);
 
-  sb.request(34, function(buffer) { buffers1.push(buffer.toString()); });
-  sb.requestNextLine(function(line) { lines.push(line); });
-  sb.request(3, function(buffer) { buffers2.push(buffer.toString()); });
-  sb.requestNextLine(function(line) { lines.push(line); });
-  sb.requestNextLine(function(line) { lines.push(line); });
+  sb.getBytes(34, function(buffer) { buffers1.push(buffer.toString()); });
+  sb.getLine(function(line) { lines.push(line); });
+  sb.getBytes(3, function(buffer) { buffers2.push(buffer.toString()); });
+  sb.getLine(function(line) { lines.push(line); });
+  sb.getLine(function(line) { lines.push(line); });
 
   beforeExit(function() {
     assert.equal('this text is spread over multiple ', buffers1.join(''));
@@ -240,7 +240,7 @@ exports['test StreamingBuffer fixed byte length with lots of data'] = function(a
   setTimeout(function() { sb.push(new Buffer('CANARY')); }, 650);
 
   var index = 0;
-  sb.request(60000, function(buffer) {
+  sb.getBytes(60000, function(buffer) {
     for (var i = 0; i < buffer.length; i++, index++) {
       assert.equal(sent[index], buffer[i]);
     }
