@@ -117,9 +117,6 @@ IMAPConnection.prototype.retrieveLine = function(line) {
       // All chunks from this literal have been put in the chunks array.
       self.line.push(chunks);
     });
-
-    // We need another line to complete the logical line.
-    this.stream.getLine(this.retrieveLine);
   }
   else {
     // This line is finished.
@@ -137,8 +134,9 @@ IMAPConnection.prototype.retrieveLine = function(line) {
 
     this.line = [];
     this.line.text = '';
-    this.stream.getLine(this.retrieveLine);
   }
+
+  this.stream.getLine(this.retrieveLine);
 };
 
 IMAPConnection.prototype.addLineToTaggedResponse = function(line) {
