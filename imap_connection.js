@@ -7,7 +7,7 @@ var utf7 = require('./lib/utf7');
 var StreamingBuffer = require('./lib/streamingbuffer').StreamingBuffer;
 var IMAPResponse = require('./imap_response');
 
-
+var dbg = false;
 
 
 function IMAPConnection(config) {
@@ -16,6 +16,8 @@ function IMAPConnection(config) {
   for (var key in config) {
     this[key] = config[key];
   }
+  
+  this.retrieveLine = this.retrieveLine.bind(this);
 
   this.commands = [];
   this.commandQueue = [];
@@ -32,7 +34,7 @@ function IMAPConnection(config) {
   this.connect(this.port, this.host);
 
   // Start reading lines from the stream "loop".
-  this.stream.requestNextLine(this.retrieveLine, this);
+  this.stream.getLine(this.retrieveLine);
 };
 util.inherits(IMAPConnection, net.Stream);
 
@@ -46,18 +48,20 @@ IMAPConnection.prototype.nextTag = function() {
   return 'N' + (this.tag++);
 };
 
-IMAPConnection.prototype.message = function(command, complete, cont) {
+IMAPConnection.prototype.message = function(command, complete, cont, line) {
   var tag = this.nextTag();
 
-  if (typeof complete !== 'function') {
+  if (typeof complete === 'object') {
     cont = complete['continue'];
+    line = complete['line'];
     complete = complete['complete'];
   }
 
   this.commands.push({
     'command': command,
     'complete': complete,
-    'continue': cont
+    'continue': cont,
+    'line': line
   });
 
   var output = tag + ' ' + command + '\r\n';
@@ -65,18 +69,20 @@ IMAPConnection.prototype.message = function(command, complete, cont) {
 };
 
 IMAPConnection.prototype.write = function(data) {
-  if (typeof data === 'string')
+  if (dbg && typeof data === 'string')
     console.log('$-> ' + util.inspect(data));
 
   net.Stream.prototype.write.call(this, data);
 };
 
 IMAPConnection.prototype.receivedData = function(chunk) {
-  var lines = chunk.toString().split('\r\n');
-  if (lines[lines.length - 1] === '') lines.pop();
-  console.log(lines.map(function(line, j) {
-    return '$<- ' + util.inspect(line + '\r\n');
-  }).join('\n'));
+  if (dbg) {
+    var lines = chunk.toString().split('\r\n');
+    if (lines[lines.length - 1] === '') lines.pop();
+    console.log(lines.map(function(line, j) {
+      return '$<- ' + util.inspect(line + '\r\n');
+    }).join('\n'));
+  }
 
   this.stream.push(chunk);
 };
@@ -104,15 +110,16 @@ IMAPConnection.prototype.retrieveLine = function(line) {
     var bytes = parseInt(line.substring(line.lastIndexOf('{') + 1, line.length - 3), 10);
     var chunks = [];
     var self = this;
-    this.stream.request(bytes, function(chunk) {
+
+    this.stream.getBytes(bytes, function(chunk) {
       chunks.push(chunk);
     }, function() {
       // All chunks from this literal have been put in the chunks array.
       self.line.push(chunks);
-
-      // We need another line to complete the logical line.
-      self.stream.requestNextLine(self.retrieveLine, self);
     });
+
+    // We need another line to complete the logical line.
+    this.stream.getLine(this.retrieveLine);
   }
   else {
     // This line is finished.
@@ -130,7 +137,7 @@ IMAPConnection.prototype.retrieveLine = function(line) {
 
     this.line = [];
     this.line.text = '';
-    this.stream.requestNextLine(this.retrieveLine, this);
+    this.stream.getLine(this.retrieveLine);
   }
 };
 
@@ -138,17 +145,30 @@ IMAPConnection.prototype.addLineToTaggedResponse = function(line) {
   switch (line.text[0]) {
     case '*':
       // Data line. There are more lines to be expected in this response.
-      this.response.push(line);
+      if (this.commands[0]['line']) {
+        var callback = this.commands[0]['line'];
+        var connection = this;
+        var response = this.response;
+        process.nextTick(function() {
+          callback.call(connection, response, line);
+        });
+      }
+      else {
+        this.response.push(line);
+      }
       break;
 
     case '+':
       // Continue request.
-      var response = this.response;
-      var command = this.commands[0];
-      if (command['continue']) {
-        var self = this;
-        process.nextTick(function() { command['continue'].call(self, response, line); });
+      if (this.commands[0]['continue']) {
+        var callback = this.commands[0]['continue'];
+        var connection = this;
+        var response = this.response;
+        process.nextTick(function() {
+          callback.call(connection, response, line);
+        });
       }
+      // Ignore the continue request otherwise.
       break;
 
     default:
@@ -173,9 +193,6 @@ IMAPConnection.prototype.addLineToTaggedResponse = function(line) {
       this.response = [];
       break;
   }
-
-  // Make the connection get the next response.
-  this.stream.requestNextLine(this.retrieveLine, this);
 };
 
 IMAPConnection.prototype.parse = function(response) {
