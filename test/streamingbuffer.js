@@ -7,15 +7,15 @@ exports['test StreamingBuffer'] = function(assert) {
   sb.push(new Buffer('this is a test\r\n'));
   sb.push(new Buffer('the next line continues\r\n here'));
 
-  assert.equal('this is a test\r\n', sb.nextLine());
-  assert.equal('the next line continues\r\n', sb.nextLine());
+  assert.equal('this is a test\r\n', sb._nextLine());
+  assert.equal('the next line continues\r\n', sb._nextLine());
 };
 
 
 exports['test StreamingBuffer without input'] = function(assert) {
   var sb = new StreamingBuffer();
 
-  assert.isUndefined(sb.nextLine());
+  assert.isUndefined(sb._nextLine());
 };
 
 
@@ -23,9 +23,9 @@ exports['test StreamingBuffer without empty lines'] = function(assert) {
   var sb = new StreamingBuffer();
   sb.push(new Buffer('this contains\r\n\r\nan empty line\r\n'));
 
-  assert.equal('this contains\r\n', sb.nextLine());
-  assert.equal('\r\n', sb.nextLine());
-  assert.equal('an empty line\r\n', sb.nextLine());
+  assert.equal('this contains\r\n', sb._nextLine());
+  assert.equal('\r\n', sb._nextLine());
+  assert.equal('an empty line\r\n', sb._nextLine());
 };
 
 
@@ -38,8 +38,8 @@ exports['test StreamingBuffer with line spread over multiple buffers'] = functio
   sb.push(new Buffer('multiple buffers\r\n'));
   sb.push(new Buffer('and continues here\r\n'));
 
-  assert.equal('this string is spread over multiple buffers\r\n', sb.nextLine());
-  assert.equal('and continues here\r\n', sb.nextLine());
+  assert.equal('this string is spread over multiple buffers\r\n', sb._nextLine());
+  assert.equal('and continues here\r\n', sb._nextLine());
 };
 
 
@@ -48,8 +48,8 @@ exports['test StreamingBuffer with CRLF in two buffers'] = function(assert) {
   sb.push(new Buffer('this string has \r'));
   sb.push(new Buffer('\n spread over multiple buffers\r\n'));
 
-  assert.equal('this string has \r\n', sb.nextLine());
-  assert.equal(' spread over multiple buffers\r\n', sb.nextLine());
+  assert.equal('this string has \r\n', sb._nextLine());
+  assert.equal(' spread over multiple buffers\r\n', sb._nextLine());
 };
 
 
@@ -57,7 +57,7 @@ exports['test StreamingBuffer with missing LF at end'] = function(assert) {
   var sb = new StreamingBuffer();
   sb.push(new Buffer('this string has \r'));
 
-  assert.isUndefined(sb.nextLine());
+  assert.isUndefined(sb._nextLine());
 };
 
 
@@ -66,7 +66,7 @@ exports['test StreamingBuffer with LF at buffer boundary'] = function(assert) {
   sb.push(new Buffer('this string has \r'));
   sb.push(new Buffer(' and continues here\r\n'));
 
-  assert.equal('this string has \r and continues here\r\n', sb.nextLine());
+  assert.equal('this string has \r and continues here\r\n', sb._nextLine());
 };
 
 
@@ -75,8 +75,8 @@ exports['test StreamingBuffer with missing CRLF'] = function(assert) {
   sb.push(new Buffer('this string has one line\r\n'));
   sb.push(new Buffer('but not another'));
 
-  assert.equal('this string has one line\r\n', sb.nextLine());
-  assert.isUndefined(sb.nextLine());
+  assert.equal('this string has one line\r\n', sb._nextLine());
+  assert.isUndefined(sb._nextLine());
 };
 
 
@@ -95,15 +95,14 @@ exports['test StreamingBuffer fixed byte length callback'] = function(assert, be
     dataReceived.push(buffer.toString('ascii'));
   }, function(data) {
     completeCallback = true;
-    assert.equal(data, id);
-  }, id);
+  });
 
   // Assert that it returns undefined when the request can't be satisfied immediately.
   assert.isUndefined(immediate);
 
   beforeExit(function() {
     assert.ok(completeCallback);
-    assert.equal('the text that appears here doesn\'t count\r\n', sb.nextLine());
+    assert.equal('the text that appears here doesn\'t count\r\n', sb._nextLine());
     assert.equal('this text comes in multiple pieces with a total length of 83 bytes and ignores CRLF', dataReceived.join(''));
   });
 };
@@ -112,24 +111,19 @@ exports['test StreamingBuffer fixed byte length callback'] = function(assert, be
 exports['test StreamingBuffer fixed byte length that can be satisfied from initial buffer'] = function(assert, beforeExit) {
   var sb = new StreamingBuffer();
   var dataReceived;
-  var id = +new Date;
   var completeCallback = false;
 
   sb.push(new Buffer('this text is already in the bufferand this one is a regular line\r\n'));
 
-  var immediate = sb.getBytes(34, function(buffer) {
+  sb.getBytes(34, function(buffer) {
     dataReceived = buffer.toString('ascii');
   }, function(data) {
     completeCallback = true;
-    assert.equal(data, id);
-  }, id);
-
-  // Assert that it returns true when the request can be satisfied immediately.
-  assert.ok(immediate);
+  });
 
   // No async required here.
   assert.ok(completeCallback);
-  assert.equal('and this one is a regular line\r\n', sb.nextLine());
+  assert.equal('and this one is a regular line\r\n', sb._nextLine());
   assert.equal('this text is already in the buffer', dataReceived);
 };
 
@@ -141,13 +135,13 @@ exports['test StreamingBuffer fixed byte length request with 0 bytes'] = functio
 
   var immediate = sb.getBytes(0, function(buffer) {
     assert.isUndefined('this function should never be called');
-  }, function(data) {
+  }, function() {
     completeCallback = true;
   });
 
   beforeExit(function() {
     assert.ok(completeCallback, 'complete callback was never called');
-    assert.equal('this string is never requested\r\n', sb.nextLine());
+    assert.equal('this string is never requested\r\n', sb._nextLine());
   });
 };
 
@@ -195,7 +189,7 @@ exports['test StreamingBuffer getLine satisfied from initial buffers'] = functio
 
 exports['test StreamingBuffer fixed length and line concurrently'] = function(assert, beforeExit) {
   var sb = new StreamingBuffer();
-  var buffers1 = [], buffers2 = [];
+  var buffers1 = [], buffers2 = [], buffers3 = [], buffers4 = [];
   var lines = [];
 
   setTimeout(function() { sb.push(new Buffer('this text is spread ')); }, 100);
@@ -206,16 +200,20 @@ exports['test StreamingBuffer fixed length and line concurrently'] = function(as
   sb.getBytes(34, function(buffer) { buffers1.push(buffer.toString()); });
   sb.getLine(function(line) { lines.push(line); });
   sb.getBytes(3, function(buffer) { buffers2.push(buffer.toString()); });
+  sb.getBytes(3, function(buffer) { buffers3.push(buffer.toString()); });
+  sb.getBytes(3, function(buffer) { buffers4.push(buffer.toString()); });
   sb.getLine(function(line) { lines.push(line); });
   sb.getLine(function(line) { lines.push(line); });
 
   beforeExit(function() {
     assert.equal('this text is spread over multiple ', buffers1.join(''));
     assert.equal('it ', buffers2.join(''));
+    assert.equal('con', buffers3.join(''));
+    assert.equal('tai', buffers4.join(''));
     
     assert.length(lines, 3);
     assert.equal('buffers.\r\n', lines[0]);
-    assert.equal('contains testing info\r\n', lines[1]);
+    assert.equal('ns testing info\r\n', lines[1]);
     assert.equal('and also some information that is not terminated\r\n', lines[2]);
   });
 };
