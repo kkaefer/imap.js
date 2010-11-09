@@ -138,13 +138,13 @@ exports['test StreamingBuffer fixed byte length request with 0 bytes'] = functio
   var sb = new StreamingBuffer();
   sb.push(new Buffer('this string is never requested\r\n'));
   var completeCallback = false;
-  
+
   var immediate = sb.request(0, function(buffer) {
     assert.isUndefined('this function should never be called');
   }, function(data) {
     completeCallback = true;
   });
-  
+
   beforeExit(function() {
     assert.ok(completeCallback, 'complete callback was never called');
     assert.equal('this string is never requested\r\n', sb.nextLine());
@@ -193,4 +193,63 @@ exports['test StreamingBuffer requestNextLine satisfied from initial buffers'] =
   });
 };
 
+exports['test StreamingBuffer fixed length and line concurrently'] = function(assert, beforeExit) {
+  var sb = new StreamingBuffer();
+  var buffers1 = [], buffers2 = [];
+  var lines = [];
 
+  setTimeout(function() { sb.push(new Buffer('this text is spread ')); }, 100);
+  setTimeout(function() { sb.push(new Buffer('over multiple buffers.\r\nit contains testing info\r\n')); }, 150);
+  setTimeout(function() { sb.push(new Buffer('and also some information that is ')); }, 200);
+  setTimeout(function() { sb.push(new Buffer('not terminated\r\nlike this, for example')); }, 250);
+
+  sb.request(34, function(buffer) { buffers1.push(buffer.toString()); });
+  sb.requestNextLine(function(line) { lines.push(line); });
+  sb.request(3, function(buffer) { buffers2.push(buffer.toString()); });
+  sb.requestNextLine(function(line) { lines.push(line); });
+  sb.requestNextLine(function(line) { lines.push(line); });
+
+  beforeExit(function() {
+    assert.equal('this text is spread over multiple ', buffers1.join(''));
+    assert.equal('it ', buffers2.join(''));
+    
+    assert.length(lines, 3);
+    assert.equal('buffers.\r\n', lines[0]);
+    assert.equal('contains testing info\r\n', lines[1]);
+    assert.equal('and also some information that is not terminated\r\n', lines[2]);
+  });
+};
+
+exports['test StreamingBuffer fixed byte length with lots of data'] = function(assert, beforeExit) {
+  var sb = new StreamingBuffer();
+  var completeCallback = false;
+  var sent = new Buffer(60000);
+
+  // Set buffer to random data from 0 to 255.
+  for (var i = 0; i < sent.length; i++) {
+    sent[i] = Math.floor(Math.random() * 255);
+  }
+
+  // Sent out the data spread over 600ms.
+  for (var i = 0; i < 60; i++) (function(i) {
+    setTimeout(function() {
+      sb.push(sent.slice(i * 1000, i * 1000 + 1000));
+    }, i * 10);
+  })(i);
+
+  setTimeout(function() { sb.push(new Buffer('CANARY')); }, 650);
+
+  var index = 0;
+  sb.request(60000, function(buffer) {
+    for (var i = 0; i < buffer.length; i++, index++) {
+      assert.equal(sent[index], buffer[i]);
+    }
+  }, function() {
+    completeCallback = true;
+  });
+
+  beforeExit(function() {
+    assert.equal(index, 60000);
+    assert.ok(completeCallback);
+  });
+};
