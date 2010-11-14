@@ -1,24 +1,13 @@
 var util = require('util');
 var config = require('./config');
-var IMAPConnection = require('./imap_connection').IMAPConnection;
+var imap = require('./lib/imap');
 
-var c = new IMAPConnection(config);
+var connection = new imap.Connection(config);
 
-c.on('authenticated', function(response) {
-  this.select('INBOX');
+connection.on('authenticated', function(account) {
+  account.mailboxes('*', function() {
+    console.log(this.line);
+  });
   
-//   this.parse(response);
-//   
-//   console.dir(response);
-//   
-//   // console.dir(response);
-//   
-//   
-//   // this.message('LIST "" ""', printResponse);
-//   // this.message('LIST "/" "*"', printResponse);
-//   // this.message('EXAMINE INBOX', printResponse);
-//   // this.message('SELECT INBOX');
-//   // this.message('FETCH  (BODY[HEADER])');
-//   
-  this.end();
+  account.logout();
 });
